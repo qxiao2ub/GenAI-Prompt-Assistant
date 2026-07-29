@@ -13,8 +13,11 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 import pandas as pd
 import streamlit as st
 
-APP_NAME = "Yashvi AI Prompt Assistant"
-DATA_PATH = Path("data/sample_user_history.csv")
+APP_NAME = "GenAI Prompt Assistant"
+AUTHOR_NAME = "Yashvi Mehta"
+MENTOR_NAME = "Dr. Qingyang Xiao"
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR / "data" / "sample_user_history.csv"
 
 DEFAULT_EXAMPLES = [
     {
@@ -410,16 +413,23 @@ def initialize_session() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title=APP_NAME, layout="wide")
+    st.set_page_config(page_title=APP_NAME, page_icon="✨", layout="wide")
     initialize_session()
 
     st.title(APP_NAME)
+    st.markdown(
+        f"**Author:** {AUTHOR_NAME} &nbsp;&nbsp; | &nbsp;&nbsp; **Mentor:** {MENTOR_NAME}"
+    )
     st.caption(
         "A GitHub-ready Streamlit prototype that learns from approved writing examples "
         "and suggests next phrases for email, notes, reports, and searches."
     )
 
     with st.sidebar:
+        st.header(APP_NAME)
+        st.markdown(f"**Author:** {AUTHOR_NAME}")
+        st.markdown(f"**Mentor:** {MENTOR_NAME}")
+        st.divider()
         st.header("Project controls")
         uploaded = st.file_uploader("Optional: upload writing history CSV", type=["csv"])
         st.markdown(
@@ -533,7 +543,7 @@ def main() -> None:
         st.download_button(
             "Download profile JSON",
             data=json.dumps(profile, indent=2),
-            file_name="yashvi_prompt_assistant_profile.json",
+            file_name="genai_prompt_assistant_profile.json",
             mime="application/json",
             use_container_width=True,
         )
@@ -553,7 +563,7 @@ def main() -> None:
     st.divider()
     with st.expander("Prototype notes and limitations"):
         st.markdown(
-            "This app is a working web prototype based on the uploaded Colab notebook. "
+            "This app is a working web prototype based on the project Colab notebook. "
             "It demonstrates the product idea with lightweight ML so it can run on Streamlit hosting. "
             "A production typing assistant, browser extension, or iOS keyboard would require native app development, "
             "stronger privacy controls, security review, user consent flows, and larger training/evaluation data."

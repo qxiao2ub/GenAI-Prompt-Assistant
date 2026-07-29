@@ -1,0 +1,10 @@
+context,user_input
+email,"Hi Professor, I hope you are doing well. I wanted to ask about the assignment deadline and whether there is any flexibility this week."
+email,"Dear team, thank you for the updates. I reviewed the draft and added comments about the timeline and deliverables."
+email,"Could we schedule a short meeting next week to discuss the project plan and the remaining action items?"
+search,"best way to build a Streamlit app from a Python notebook and deploy it for a portfolio project"
+search,"privacy friendly design patterns for apps that learn from user typing behavior"
+note,"The assistant should learn from previous writing patterns and suggest the next phrase without interrupting the user."
+note,"The app should allow users to accept reject or edit suggestions so the model can improve over time."
+report,"Machine learning is used to identify writing habits repeated phrases topic preferences and context specific behavior."
+report,"The final deliverable includes a Colab notebook a Streamlit app documentation and a GitHub ready project structure."

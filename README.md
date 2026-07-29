@@ -1,237 +1,263 @@
-# Yashvi AI Prompt Assistant
+# GenAI Prompt Assistant
 
-A GitHub-ready Streamlit prototype based on the attached Colab notebook `070726_Yashvi_AI_Assistant_Tool_App.ipynb`.
+**Author:** Yashvi Mehta  
+**Mentor:** Dr. Qingyang Xiao
 
-This app demonstrates an AI-based prompt assistant that learns from previous user writing examples and suggests likely next phrases for email, notes, reports, and online search prompts.
+GenAI Prompt Assistant is a privacy-first Streamlit prototype that learns from approved writing examples and proposes next phrases for emails, notes, reports, general writing, and online-search prompts.
 
-## Important fix in this version
+The app name, browser-page title, main-page heading, sidebar heading, author, and mentor information have all been updated in this repository.
 
-The previous Streamlit deployment failed with this error:
+## Live app capabilities
+
+- Accepts a partial phrase, sentence, paragraph, or search prompt.
+- Supports `email`, `search`, `note`, `report`, and `general` writing contexts.
+- Generates lightweight local next-phrase suggestions.
+- Learns from built-in examples, an uploaded CSV, and optional session text.
+- Uses TF-IDF similarity to retrieve relevant prior writing patterns.
+- Uses an n-gram predictor to estimate likely continuations.
+- Adds context-aware fallback suggestions when training history is limited.
+- Accepts positive or negative feedback and ranks suggestion sources using a bandit-style score.
+- Displays behavior insights such as example counts, context counts, common terms, and average content length.
+- Downloads the session learning profile as JSON and approved session examples as CSV.
+- Requires no API key and calls no external AI service.
+
+## Branding
+
+The Streamlit interface displays:
 
 ```text
-ModuleNotFoundError: No module named 'src'
+GenAI Prompt Assistant
+Author: Yashvi Mehta
+Mentor: Dr. Qingyang Xiao
 ```
 
-That happened because `app.py` imported:
+The author and mentor appear in both places requested:
 
-```python
-from src.assistant_engine import BanditRanker, SuggestionEngine, clean_history_df
-```
-
-If the `src/` folder is not uploaded to GitHub, or Streamlit does not see the folder in the deployed repository, the app crashes before it opens.
-
-This fixed version removes that dependency from the running app. The root `app.py` is now self-contained, so Streamlit can run it directly from GitHub without needing to import `src`.
+1. At the top of the left sidebar.
+2. Directly below the app title on the main page.
 
 ## Repository structure
 
 ```text
 .
-|-- app.py                              # Main Streamlit app; use this as the Streamlit entry point
-|-- requirements.txt                    # Python packages needed by Streamlit
-|-- runtime.txt                         # Python runtime hint for hosted deployment
-|-- README.md                           # Main documentation
-|-- data/
-|   `-- sample_user_history.csv          # Demo writing history data
-|-- notebooks/
-|   `-- 070726_Yashvi_AI_Assistant_Tool_App.ipynb
-|-- docs/
-|   |-- GITHUB_UPLOAD_GUIDE.md
-|   |-- STREAMLIT_DEPLOYMENT_GUIDE.md
-|   |-- PROJECT_OVERVIEW.md
-|   `-- PRIVACY_AND_SAFETY.md
+|-- app.py
+|-- requirements.txt
+|-- README.md
+|-- LICENSE
+|-- .gitignore
 |-- .streamlit/
 |   `-- config.toml
-|-- src/
-|   |-- __init__.py
-|   `-- assistant_engine.py              # Optional placeholder for future modular refactor
-|-- tests/
-|   `-- test_static_checks.py
-|-- .gitignore
-`-- LICENSE
+|-- data/
+|   `-- sample_user_history.csv
+|-- notebooks/
+|   `-- GenAI_Prompt_Assistant_Colab.ipynb
+|-- docs/
+|   |-- PROJECT_ARCHITECTURE.md
+|   `-- STREAMLIT_DEPLOYMENT.md
+`-- tests/
+    `-- test_static_checks.py
 ```
 
-## What the app does
+## Why this version is Streamlit-ready
 
-The prototype includes four AI/ML-style components:
+The entrypoint is the root-level `app.py`. It contains the complete prediction engine and does not import a local `src` package. This prevents the earlier deployment failure:
 
-1. **N-gram next-phrase prediction**
-   - Learns which words often follow recent words in the user's previous writing.
-   - Produces a lightweight next phrase or sentence continuation.
+```text
+ModuleNotFoundError: No module named 'src'
+```
 
-2. **Local TF-IDF personalization**
-   - Finds prior writing examples that are similar to the current prompt.
-   - Suggests a continuation based on the user's own writing style.
-   - Implemented directly in `app.py` to avoid heavy package dependencies.
+The sample-data path is resolved relative to `app.py`, instead of depending on the server's current working directory:
 
-3. **Context-aware suggestions**
-   - Uses different fallback suggestions for email, search, note, report, and general writing.
+```python
+BASE_DIR = Path(__file__).resolve().parent
+DATA_PATH = BASE_DIR / "data" / "sample_user_history.csv"
+```
 
-4. **Reinforcement-learning-style feedback ranking**
-   - Lets the user accept or reject suggestions.
-   - Accepted suggestion sources rank higher in the current session.
-   - This is a small bandit-style feedback loop suitable for a portfolio prototype.
+## Quick local test
 
-## Quick local run
+Python 3.11 or newer is recommended.
 
-From the project folder:
+### Windows PowerShell
 
-```bash
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Then open the local Streamlit URL shown in the terminal.
+### macOS or Linux
 
-## How to upload to GitHub
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-1. Download and unzip this project.
-2. Create a new GitHub repository, for example:
-   - `ai-prompt-assistant`
-   - `yashvi-ai-prompt-assistant`
-3. Upload the extracted files and folders to the repository.
-4. Confirm that the repository root contains these files:
-   - `app.py`
-   - `requirements.txt`
-   - `README.md`
-   - `data/sample_user_history.csv`
-5. Commit the files.
+Open the local address displayed by Streamlit, usually `http://localhost:8501`.
 
-Do not upload only the ZIP file to GitHub. GitHub and Streamlit need the extracted project files.
+## Upload to GitHub
 
-## How to deploy on Streamlit Community Cloud
-
-1. Go to Streamlit Community Cloud.
-2. Create a new app.
-3. Select your GitHub repository.
-4. Set the main file path to:
+1. Download and extract the ZIP file.
+2. Create a new GitHub repository, such as `genai-prompt-assistant`.
+3. Upload the **extracted contents** of the project folder.
+4. Confirm that these files are at the repository root:
 
 ```text
 app.py
+requirements.txt
+README.md
 ```
 
-5. Deploy the app.
+5. Commit the files to the `main` branch.
 
-The main file path should be exactly `app.py` if the file is in the root of the repository.
+Do not upload only the ZIP file. GitHub must contain the extracted files and folders so Streamlit can access them.
 
-## CSV upload format
+## Deploy to Streamlit Community Cloud
 
-The app can run with its built-in sample data. You can also upload a CSV with your own writing examples.
+Use these values when creating the Streamlit app:
 
-Required column:
+```text
+Branch: main
+Main file path: app.py
+```
+
+No secrets or API keys are required.
+
+A more detailed procedure is available in [`docs/STREAMLIT_DEPLOYMENT.md`](docs/STREAMLIT_DEPLOYMENT.md).
+
+## CSV history format
+
+The app works without an upload by using fictional sample data. A custom CSV must contain the following required column:
 
 ```text
 user_input
 ```
 
-Optional column:
+It may also contain this optional column:
 
 ```text
 context
 ```
 
-Allowed or suggested context values:
+Suggested context values are:
 
 ```text
-email, search, note, report, general
+email
+search
+note
+report
+general
 ```
 
 Example:
 
 ```csv
 context,user_input
-email,"Dear team, thank you for the update. I will review the document and send comments by Friday."
-search,"best way to deploy a Streamlit app from a GitHub repository"
-note,"The assistant should learn from user-approved examples and keep the user in control."
+email,"Dear team, thank you for the update. I will review the document and respond by Friday."
+search,"beginner guide to deploying a Streamlit app from GitHub"
+note,"The user should control which examples the assistant learns from."
 ```
 
-## How to use the app
+## Model pipeline
 
-1. Choose a writing context in the dropdown.
-2. Type a phrase, sentence, or paragraph.
-3. Click **Generate suggestions**.
-4. Review the suggested continuations.
-5. Click **Accept** or **Reject** to update the session feedback ranker.
-6. Optionally download the session profile JSON or session CSV.
+### 1. Text preprocessing
+
+The app normalizes spacing, tokenizes the writing examples, removes common stop words for similarity analysis, and validates the CSV schema.
+
+### 2. N-gram next-phrase prediction
+
+The local n-gram model learns which token commonly follows the preceding tokens in the approved writing history. It uses shorter-context backoff and unigram frequencies when an exact sequence is unavailable.
+
+### 3. TF-IDF personalization
+
+A small TF-IDF implementation converts prior writing examples and the current prompt into weighted term vectors. Cosine similarity identifies the closest prior example, from which the app derives a possible continuation.
+
+### 4. Context-aware fallback generation
+
+When local history is sparse, the app adds templates appropriate for email, search, notes, reports, or general writing.
+
+### 5. Feedback-based ranking
+
+Accept and reject buttons update a simple bandit-style score for each suggestion source. Sources with stronger positive session feedback are ranked higher on later generations.
+
+## Privacy and responsible use
+
+This prototype:
+
+- Does not call an external AI API.
+- Does not require an API key.
+- Does not use a persistent database.
+- Keeps feedback and newly learned text in the active Streamlit session unless the user downloads it.
+- Uses fictional sample content.
+
+Before converting this into a production keyboard, browser extension, email assistant, or mobile app, add explicit consent, secure authentication, encrypted storage, configurable retention, data deletion, abuse prevention, and independent privacy/security review.
+
+## Limitations
+
+- The local model is an educational prototype, not a large language model.
+- N-gram predictions can repeat frequent tokens and are limited by the available writing history.
+- TF-IDF measures lexical similarity rather than deep semantic meaning.
+- Feedback is session-based and is not retained after the Streamlit session ends.
+- The app does not integrate directly with email clients, browsers, or mobile keyboards.
 
 ## Troubleshooting
 
-### Error: `ModuleNotFoundError: No module named 'src'`
+### `ModuleNotFoundError: No module named 'src'`
 
-This fixed version should not produce that error because `app.py` no longer imports from `src`.
+This repository does not use `src` imports. Seeing this error means Streamlit is deploying an older commit or the wrong entrypoint. Confirm that the selected main file is the new root-level `app.py`, then reboot or redeploy.
 
-If you still see the error, GitHub or Streamlit is probably running the old `app.py`. Fix it by doing the following:
+### App still shows the old Yashvi title
 
-1. Replace the old GitHub files with the files from this ZIP.
-2. Confirm that the deployed `app.py` does not contain this line:
+Confirm that GitHub's current `app.py` contains:
 
 ```python
-from src.assistant_engine import ...
+APP_NAME = "GenAI Prompt Assistant"
 ```
 
-3. In Streamlit Cloud, reboot or redeploy the app.
+Then reboot the Streamlit app or clear its cache.
 
-### Error: Streamlit cannot find `app.py`
+### Sample CSV cannot be found
 
-Make sure the Streamlit app entry point is:
+Keep this file in the repository:
 
 ```text
-app.py
+data/sample_user_history.csv
 ```
 
-Also make sure `app.py` is at the root of the GitHub repository, not hidden inside another folder.
+The app also has built-in fallback examples, so it remains usable if the demo CSV is unavailable.
 
-### Error reading CSV
+### Uploaded CSV is rejected
 
-Make sure your CSV contains a column named exactly:
+Check that the file has a column named exactly `user_input`. The optional context column must be named exactly `context`.
+
+## Colab notebook
+
+The repository includes an updated copy of the original notebook:
 
 ```text
-user_input
+notebooks/GenAI_Prompt_Assistant_Colab.ipynb
 ```
 
-The optional context column should be named exactly:
+It is included for portfolio documentation, experimentation, and Google Colab use. Streamlit deploys only the root `app.py`.
 
-```text
-context
-```
+## Portfolio value
 
-## Privacy and safety notes
+This repository demonstrates:
 
-This prototype is designed as a privacy-first demo:
-
-- No external AI API is called.
-- No API key is needed.
-- No database is used.
-- Session text stays in the active Streamlit session unless the user downloads it.
-- The sample data is fictional demo data.
-
-For a production typing assistant, browser extension, or iOS keyboard, additional privacy, consent, security, and data-retention controls would be required.
-
-## Portfolio explanation
-
-This project is useful for a student portfolio because it shows:
-
-- Product thinking
-- Data preprocessing
+- Product and user-experience design
+- Text preprocessing
 - Lightweight machine learning
-- Personalization
-- Feedback-based ranking
-- Streamlit web app development
-- GitHub project organization
-- Documentation and deployment readiness
+- Personalized information retrieval
+- Online feedback ranking
+- Streamlit development
+- GitHub repository organization
+- Deployment documentation
+- Privacy-aware prototyping
 
-## Future improvements
+## License
 
-Possible next steps:
-
-- Add user login and encrypted storage.
-- Add a browser extension prototype.
-- Add an iOS keyboard extension proof of concept.
-- Add transformer-based next-text generation with a small open-source model.
-- Add an evaluation dashboard for accepted/rejected suggestions.
-- Add stronger privacy controls and user data deletion tools.
-
-## License and copyright note
-
-This repository includes an MIT-style license file for portfolio demonstration. The copyright notice can be changed to Yashvi's full legal name if desired.
-
-Copyright (c) 2026 Yashvi
+Released under the MIT License for educational and portfolio use. See [`LICENSE`](LICENSE).
