@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import math
 import re
@@ -412,162 +413,717 @@ def initialize_session() -> None:
     st.session_state.setdefault("last_context", "email")
 
 
-def main() -> None:
-    st.set_page_config(page_title=APP_NAME, page_icon="✨", layout="wide")
+
+# -----------------------------------------------------------------------------
+# Lovable-inspired prompt analysis layer
+# -----------------------------------------------------------------------------
+
+MODEL_HINTS = {
+    "ChatGPT": "Use an explicit role, task, constraints, and step framing.",
+    "Claude": "Provide rich context and clearly labelled sections.",
+    "Gemini": "State concrete goals and structured output rules.",
+    "Perplexity": "Include sourcing and recency requirements.",
+    "Copilot": "Name the language, files, constraints, and desired code quality.",
+}
+
+PROMPT_CONTEXTS = ["Email", "Research", "Coding", "Meeting Notes", "School", "Business", "Marketing", "General"]
+PROMPT_LENGTHS = ["Short", "Medium", "Long"]
+PROMPT_TONES = ["Professional", "Friendly", "Academic", "Persuasive", "Creative"]
+PROMPT_AUDIENCES = ["Beginner", "Intermediate", "Expert"]
+PROMPT_FORMATS = ["Paragraph", "Bullets", "Table", "JSON", "Checklist"]
+PROMPT_MODELS = list(MODEL_HINTS)
+
+EXAMPLE_PROMPTS = {
+    "Write an email": "Write a polite email asking my professor for a two-day extension on a project because I was sick.",
+    "Research a topic": "Research the benefits and risks of AI tutoring for middle-school students.",
+    "Summarize notes": "Summarize these meeting notes and identify decisions, owners, and deadlines.",
+    "Create a presentation": "Create a 10-slide presentation that explains renewable energy to high-school students.",
+    "Build code": "Build a beginner-friendly Python program that tracks homework assignments in a CSV file.",
+    "Analyze data": "Analyze a student progress dataset and explain the most important trends in plain language.",
+}
+
+PROMPT_LIBRARY = {
+    "Business": "Act as a business analyst. Create a concise proposal for [initiative]. Include the objective, audience, benefits, risks, timeline, budget assumptions, and next steps. Return the answer as a structured memo.",
+    "Education": "Act as an experienced teacher. Create a lesson plan about [topic] for [grade level]. Include learning objectives, materials, a warm-up, guided practice, independent practice, assessment, and accommodations.",
+    "Coding": "Act as a senior software engineer and patient coding tutor. Build [feature] in [language]. Explain the approach, provide production-ready code, include error handling, and add small tests. Assume the learner is [level].",
+    "Writing": "Act as an expert editor. Rewrite the following draft for [audience] using a [tone] tone. Improve clarity, flow, structure, and concision while preserving the original meaning: [paste draft].",
+    "Marketing": "Act as a marketing strategist. Create a campaign for [product] aimed at [audience]. Include positioning, key messages, channels, sample copy, success metrics, and a 30-day launch plan.",
+    "Resume": "Act as a resume editor. Rewrite these accomplishments for a [role] application using quantified impact, strong action verbs, and concise bullet points. Do not invent facts: [paste accomplishments].",
+    "Interviews": "Act as an interview coach. Prepare me for a [role] interview. Generate likely questions, strong answer frameworks, a mock interview, and a scoring rubric based on this job description: [paste description].",
+    "Research": "Act as a research assistant. Develop a structured research plan for [topic]. Include research questions, search terms, inclusion criteria, evidence table fields, limitations, and a synthesis outline.",
+}
+
+WEAK_PROMPT_WORDS = ["help", "do", "make", "stuff", "things", "some", "nice", "good"]
+
+
+def clamp_score(value: float) -> int:
+    return max(0, min(100, round(value)))
+
+
+def analyze_prompt_quality(prompt: str, audience: str, length: str, tone: str, output_format: str) -> Dict[str, object]:
+    text = normalize_text(prompt)
+    words = len(text.split()) if text else 0
+    lower = f" {text.lower()} "
+
+    clarity = clamp_score(30 + min(words, 60) * 0.9 + (12 if re.search(r"[.?!]", text) else 0))
+    specificity = clamp_score(
+        20 + min(words, 80) * 0.7 + (15 if re.search(r"\d", text) else 0)
+        - sum(8 for word in WEAK_PROMPT_WORDS if f" {word} " in lower)
+    )
+    context = clamp_score(18 + (35 if words > 25 else words) + (25 if re.search(r"audience|for |context|because", lower) else 0))
+    constraints = clamp_score(
+        10 + (55 if re.search(r"within|limit|no more|avoid|must|only|word|tone", lower) else 0)
+        + min(words, 40) * 0.6
+    )
+    examples = clamp_score((80 if re.search(r"example|e\.g\.|for instance|sample", lower) else 15) + words * 0.2)
+    breakdown = {
+        "Clarity": clarity,
+        "Specificity": specificity,
+        "Context": context,
+        "Constraints": constraints,
+        "Examples": examples,
+    }
+    score = clamp_score(sum(breakdown.values()) / len(breakdown)) if text else 0
+
+    suggestions = []
+    if context < 70:
+        suggestions.append(("Clarify your audience", "Naming who the answer is for makes the response more relevant.", f"Write this for a {audience.lower()} audience."))
+    if constraints < 70:
+        suggestions.append(("Specify constraints", "Length, tone, and boundaries keep the model on target.", f"Keep it {length.lower()} and use a {tone.lower()} tone."))
+    if not re.search(r"bullet|table|json|checklist|paragraph|format", lower):
+        suggestions.append(("Add an output format", "Tell the model how to structure the answer.", f"Return the answer as {output_format.lower()}."))
+    if examples < 60:
+        suggestions.append(("Include an example", "One example can sharply improve response quality.", "Include one short example of the ideal answer."))
+    if 0 < words < 12:
+        suggestions.append(("Make the goal more specific", "Add the subject, outcome, and key details you expect.", "Add the specific goal and the outcome you want to achieve."))
+
+    return {"score": score, "breakdown": breakdown, "suggestions": suggestions}
+
+
+def build_improved_prompt(
+    prompt: str,
+    context: str,
+    model: str,
+    length: str,
+    tone: str,
+    audience: str,
+    output_format: str,
+    applied_guidance: Sequence[str],
+) -> str:
+    text = normalize_text(prompt)
+    if not text:
+        return ""
+    length_guide = {"Short": "under 150 words", "Medium": "around 350 words", "Long": "800 or more words"}[length]
+    lines = [
+        f"You are an expert {context.lower()} specialist.",
+        "",
+        f"Task: {text}",
+        "",
+        "Requirements:",
+        f"- Audience: {audience.lower()} readers",
+        f"- Tone: {tone.lower()}",
+        f"- Length: {length_guide}",
+        f"- Output format: {output_format.lower()}",
+        f"- Model guidance: {MODEL_HINTS[model]}",
+        "- Ask for missing details before making important assumptions.",
+    ]
+    if applied_guidance:
+        lines.extend(["", "Additional guidance:"])
+        lines.extend(f"- {item}" for item in applied_guidance)
+    return "\n".join(lines)
+
+
+def score_label(score: int) -> str:
+    if score == 0:
+        return "Awaiting prompt"
+    if score >= 85:
+        return "Excellent"
+    if score >= 70:
+        return "Professional"
+    if score >= 50:
+        return "Solid start"
+    return "Needs improvement"
+
+
+def safe_uploaded_history(uploaded_file) -> pd.DataFrame:
+    if uploaded_file is None:
+        return load_default_history()
+    try:
+        uploaded_file.seek(0)
+        return clean_history_df(pd.read_csv(uploaded_file))
+    except Exception as exc:
+        st.error(f"Could not read the uploaded CSV: {exc}")
+        return load_default_history()
+
+
+def extend_session_defaults() -> None:
     initialize_session()
+    defaults = {
+        "navigation": "Workspace",
+        "prompt_text": "",
+        "prompt_context": "General",
+        "target_model": "ChatGPT",
+        "response_length": "Medium",
+        "target_audience": "Intermediate",
+        "prompt_tone": "Professional",
+        "output_format": "Bullets",
+        "applied_guidance": [],
+        "generation_log": [],
+        "saved_prompts": [],
+        "learn_from_session": True,
+        "top_k": 5,
+        "live_analysis": True,
+        "high_contrast": False,
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(key, value)
 
-    st.title(APP_NAME)
+
+def inject_lovable_styles() -> None:
+    high_contrast = bool(st.session_state.get("high_contrast", False))
+    bg = "#eef2f7" if high_contrast else "#f6f8fb"
+    text = "#07182d" if high_contrast else "#10233f"
     st.markdown(
-        f"**Author:** {AUTHOR_NAME} &nbsp;&nbsp; | &nbsp;&nbsp; **Mentor:** {MENTOR_NAME}"
-    )
-    st.caption(
-        "A GitHub-ready Streamlit prototype that learns from approved writing examples "
-        "and suggests next phrases for email, notes, reports, and searches."
+        f"""
+        <style>
+        :root {{
+          --navy:#07182d;
+          --navy-2:#0b1f3a;
+          --blue:#2563eb;
+          --blue-soft:#e8f0ff;
+          --mint:#3dd6b4;
+          --surface:#ffffff;
+          --surface-2:#f2f5f9;
+          --border:#dfe6ef;
+          --text:{text};
+          --muted:#6f7f93;
+          --success:#15946f;
+          --shadow:0 18px 50px -34px rgba(7,24,45,.45);
+        }}
+        html, body, [class*="css"] {{ font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+        .stApp {{ background: {bg}; color: var(--text); }}
+        [data-testid="stHeader"] {{ background: rgba(246,248,251,.80); border-bottom:1px solid rgba(223,230,239,.75); backdrop-filter: blur(16px); }}
+        [data-testid="stMainBlockContainer"] {{ max-width: 1500px; padding-top: 1.6rem; padding-bottom: 4rem; }}
+        [data-testid="stSidebar"] {{ background: var(--navy); border-right:0; }}
+        [data-testid="stSidebar"] * {{ color: rgba(255,255,255,.84); }}
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{ color: rgba(255,255,255,.72); }}
+        [data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,.10); }}
+        [data-testid="stSidebar"] [data-baseweb="radio"] > div {{ gap:.35rem; }}
+        [data-testid="stSidebar"] [role="radiogroup"] label {{
+          border-radius:12px; padding:.58rem .7rem; margin:.08rem 0; transition:.18s ease; width:100%;
+        }}
+        [data-testid="stSidebar"] [role="radiogroup"] label:hover {{ background:rgba(255,255,255,.07); }}
+        [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{ background:rgba(255,255,255,.10); box-shadow:inset 3px 0 0 var(--blue); }}
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.16); }}
+        [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {{ color:var(--navy)!important; background:white!important; }}
+        h1,h2,h3 {{ color:var(--text); letter-spacing:-.025em; }}
+        .lovable-topbar {{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; color:var(--muted); font-size:13px; }}
+        .lovable-status {{ display:flex; align-items:center; gap:9px; }}
+        .lovable-status-dot {{ width:7px; height:7px; border-radius:999px; background:var(--blue); box-shadow:0 0 0 5px rgba(37,99,235,.08); }}
+        .hero-card {{
+          position:relative; overflow:hidden; border:1px solid var(--border); border-radius:24px; padding:40px;
+          background:linear-gradient(135deg,#ffffff 0%,#f8fbff 58%,#edf4ff 100%); box-shadow:var(--shadow); margin-bottom:22px;
+        }}
+        .hero-card:before {{ content:""; position:absolute; width:330px; height:330px; right:-110px; top:-160px; border-radius:50%; background:rgba(37,99,235,.12); filter:blur(30px); }}
+        .hero-card:after {{ content:""; position:absolute; width:120px; height:120px; right:90px; bottom:-45px; border:1px solid rgba(11,31,58,.10); border-radius:50%; }}
+        .hero-inner {{ position:relative; max-width:820px; }}
+        .accent-rule {{ width:54px; height:4px; border-radius:99px; background:linear-gradient(90deg,var(--blue),var(--mint)); margin-bottom:16px; }}
+        .hero-eyebrow {{ color:var(--blue); font-weight:650; font-size:14px; }}
+        .hero-title {{ color:var(--navy-2); font-size:clamp(35px,4vw,54px); line-height:1.04; letter-spacing:-.045em; font-weight:750; margin:7px 0 12px; }}
+        .hero-copy {{ color:var(--muted); font-size:16px; line-height:1.65; max-width:720px; }}
+        .support-row {{ display:flex; flex-wrap:wrap; gap:12px 19px; margin-top:20px; color:var(--muted); font-size:13px; }}
+        .support-row b {{ color:var(--text); }}
+        .support-item:before {{ content:"✓"; color:var(--success); font-weight:800; margin-right:6px; }}
+        .quick-card {{ min-height:120px; border:1px solid var(--border); border-radius:16px; background:white; padding:18px; box-shadow:0 12px 32px -30px rgba(7,24,45,.55); }}
+        .quick-icon {{ width:38px; height:38px; display:flex; align-items:center; justify-content:center; border-radius:11px; border:1px solid var(--border); background:var(--blue-soft); color:var(--navy); font-size:18px; }}
+        .quick-title {{ color:var(--text); font-weight:700; font-size:14px; margin-top:13px; }}
+        .quick-detail {{ color:var(--muted); font-size:12.5px; margin-top:4px; line-height:1.45; }}
+        [data-testid="stVerticalBlockBorderWrapper"] {{ background:var(--surface); border:1px solid var(--border)!important; border-radius:18px!important; box-shadow:0 12px 36px -32px rgba(7,24,45,.55); }}
+        [data-testid="stMetric"] {{ background:var(--surface-2); border:1px solid var(--border); border-radius:14px; padding:14px 16px; }}
+        .section-kicker {{ text-transform:uppercase; letter-spacing:.14em; color:var(--muted); font-weight:750; font-size:10.5px; margin-bottom:8px; }}
+        .score-card {{ background:linear-gradient(150deg,#fff,#f7faff); border:1px solid var(--border); border-radius:18px; padding:22px; box-shadow:var(--shadow); }}
+        .score-ring {{ width:140px; height:140px; margin:12px auto; border-radius:50%; display:grid; place-items:center; background:conic-gradient(var(--blue) calc(var(--score)*1%), #dfe7f2 0); position:relative; }}
+        .score-ring:after {{ content:""; position:absolute; width:112px; height:112px; background:white; border-radius:50%; box-shadow:inset 0 0 0 1px var(--border); }}
+        .score-number {{ position:relative; z-index:1; text-align:center; color:var(--navy); font-size:34px; font-weight:760; line-height:1; }}
+        .score-number small {{ display:block; font-size:10.5px; color:var(--muted); font-weight:500; margin-top:5px; letter-spacing:.04em; }}
+        .score-label {{ display:table; margin:10px auto 18px; border:1px solid var(--border); border-radius:99px; padding:5px 11px; font-size:12px; font-weight:700; color:var(--navy); background:white; }}
+        .credit-card {{ border:1px solid rgba(255,255,255,.11); background:rgba(255,255,255,.055); border-radius:16px; padding:14px; margin-top:16px; }}
+        .credit-row {{ display:flex; align-items:center; gap:11px; }}
+        .avatar {{ width:38px; height:38px; border-radius:50%; display:grid; place-items:center; background:rgba(37,99,235,.30); border:1px solid rgba(255,255,255,.16); color:white; font-size:12px; font-weight:800; }}
+        .credit-name {{ color:white; font-weight:700; font-size:13px; }}
+        .credit-role {{ color:rgba(255,255,255,.50); font-size:10.5px; margin-top:2px; }}
+        .brand-wrap {{ display:flex; align-items:center; gap:11px; margin:4px 0 19px; }}
+        .brand-mark {{ width:42px; height:42px; border-radius:14px; border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.09); display:grid; place-items:center; color:white; font-size:21px; font-weight:800; }}
+        .brand-name {{ color:white; font-size:15px; font-weight:800; line-height:1.2; }}
+        .brand-sub {{ color:rgba(255,255,255,.52); font-size:10.5px; margin-top:3px; letter-spacing:.04em; }}
+        .original-box,.improved-box {{ min-height:190px; border-radius:15px; padding:18px; border:1px solid var(--border); white-space:pre-wrap; line-height:1.55; font-size:13.5px; }}
+        .original-box {{ background:#fff; color:var(--muted); }}
+        .improved-box {{ background:linear-gradient(145deg,#eef5ff,#f7fbff); color:var(--text); }}
+        .chip {{ display:inline-block; border:1px solid var(--border); background:white; color:var(--muted); border-radius:99px; padding:5px 10px; margin:3px 5px 3px 0; font-size:11.5px; }}
+        .history-card {{ background:white; border:1px solid var(--border); border-radius:15px; padding:16px 18px; margin-bottom:10px; }}
+        .history-score {{ float:right; background:rgba(21,148,111,.12); color:var(--success); font-weight:750; padding:4px 9px; border-radius:99px; font-size:11px; }}
+        .footer-note {{ color:var(--muted); text-align:center; font-size:11px; padding-top:26px; }}
+        .stButton > button, .stDownloadButton > button {{ border-radius:11px!important; min-height:2.55rem; font-weight:650!important; transition:.18s ease!important; }}
+        .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {{ background:var(--blue)!important; border-color:var(--blue)!important; }}
+        .stButton > button:hover, .stDownloadButton > button:hover {{ transform:translateY(-1px); box-shadow:0 12px 24px -18px rgba(7,24,45,.65); }}
+        [data-baseweb="select"] > div, [data-baseweb="input"] > div, textarea {{ border-radius:12px!important; border-color:var(--border)!important; }}
+        textarea {{ min-height:175px; }}
+        [data-testid="stTabs"] button {{ font-weight:650; }}
+        @media (max-width: 800px) {{ .hero-card {{ padding:28px 22px; }} .hero-title {{ font-size:36px; }} }}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
+
+def render_brand_sidebar() -> None:
+    st.markdown(
+        """
+        <div class="brand-wrap">
+          <div class="brand-mark">G+</div>
+          <div><div class="brand-name">GenAI Prompt</div><div class="brand-sub">INTELLIGENT PROMPT ASSISTANT</div></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_topbar() -> None:
+    st.markdown(
+        """
+        <div class="lovable-topbar">
+          <div class="lovable-status"><span class="lovable-status-dot"></span>Better prompts, better answers - every time.</div>
+          <div><span class="chip">Privacy-first prototype</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_score_card(analysis: Dict[str, object]) -> None:
+    score = int(analysis["score"])
+    st.markdown(
+        f"""
+        <div class="score-card">
+          <div class="section-kicker">Prompt strength</div>
+          <div class="score-ring" style="--score:{score}"><div class="score-number">{score}<small>OUT OF 100</small></div></div>
+          <div class="score-label">{score_label(score)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    for label, value in analysis["breakdown"].items():
+        left, right = st.columns([4, 1])
+        left.caption(label)
+        right.caption(str(value))
+        st.progress(int(value) / 100)
+
+
+def render_sidebar() -> object:
     with st.sidebar:
-        st.header(APP_NAME)
-        st.markdown(f"**Author:** {AUTHOR_NAME}")
-        st.markdown(f"**Mentor:** {MENTOR_NAME}")
+        render_brand_sidebar()
+        st.caption("WORKSPACE")
+        page = st.radio(
+            "Navigation",
+            ["Workspace", "History", "Saved Prompts", "Training", "Settings", "Help"],
+            label_visibility="collapsed",
+            key="navigation",
+        )
         st.divider()
-        st.header("Project controls")
-        uploaded = st.file_uploader("Optional: upload writing history CSV", type=["csv"])
+        uploaded = st.file_uploader("Teach the assistant with a CSV", type=["csv"], help="Required column: user_input. Optional column: context.")
+        st.caption("Your upload remains inside the active Streamlit session.")
         st.markdown(
-            "CSV format: one required column named `user_input`; optional column named `context`. "
-            "The app runs without uploading any file by using sample demo data."
+            f"""
+            <div class="credit-card">
+              <div class="credit-row"><div class="avatar">YM</div><div><div class="credit-name">{AUTHOR_NAME}</div><div class="credit-role">AUTHOR</div></div></div>
+              <div style="height:1px;background:rgba(255,255,255,.09);margin:12px 0"></div>
+              <div class="credit-name" style="font-size:12px">{MENTOR_NAME}</div><div class="credit-role">MENTOR</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        st.divider()
-        st.subheader("Privacy-first demo")
-        st.write(
-            "This prototype uses local code only. It does not call external AI APIs, does not require "
-            "an API key, and does not store user text in a database. Session history exists only for "
-            "the active Streamlit session unless you download it."
-        )
-        st.divider()
-        st.subheader("Model pieces")
-        st.markdown(
-            "- N-gram next phrase predictor\n"
-            "- Local TF-IDF similarity personalization\n"
-            "- Context-aware fallback suggestions\n"
-            "- Bandit-style accept/reject feedback ranking"
-        )
+        st.caption("Local ML demo - no external AI API required")
+        return uploaded
 
-    history = read_uploaded_history(uploaded)
-    if st.session_state.session_history:
-        history = pd.concat([history, pd.DataFrame(st.session_state.session_history)], ignore_index=True)
-        history = clean_history_df(history)
 
+def render_hero() -> None:
+    hour = datetime.now().hour
+    greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
+    st.markdown(
+        f"""
+        <section class="hero-card">
+          <div class="hero-inner">
+            <div class="accent-rule"></div>
+            <div class="hero-eyebrow">{greeting}, Yashvi</div>
+            <div class="hero-title">Ready to build better prompts?</div>
+            <div class="hero-copy">GenAI Prompt Assistant turns ordinary requests into expert-level instructions, scores their quality, and learns from approved writing examples.</div>
+            <div class="support-row"><b>Supports</b><span class="support-item">ChatGPT</span><span class="support-item">Claude</span><span class="support-item">Gemini</span><span class="support-item">Perplexity</span><span class="support-item">Copilot</span></div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def set_prompt_text(value: str) -> None:
+    """Callback-safe helper for loading examples and templates."""
+    st.session_state["prompt_text"] = value
+
+
+def render_quick_actions() -> None:
+    cards = [
+        ("✎", "Start writing", "Draft a prompt from a blank canvas."),
+        ("✦", "Improve existing", "Paste a prompt and refine it."),
+        ("▤", "Email example", "Load a polished email request."),
+        ("⌁", "Coding example", "Load a structured coding task."),
+    ]
+    columns = st.columns(4)
+    for col, (icon, title, detail) in zip(columns, cards):
+        with col:
+            st.markdown(f'<div class="quick-card"><div class="quick-icon">{icon}</div><div class="quick-title">{title}</div><div class="quick-detail">{detail}</div></div>', unsafe_allow_html=True)
+    buttons = st.columns(4)
+    buttons[0].button("Open blank canvas", use_container_width=True, on_click=set_prompt_text, args=("",))
+    buttons[1].button("Keep current draft", use_container_width=True)
+    buttons[2].button("Load email", use_container_width=True, on_click=set_prompt_text, args=(EXAMPLE_PROMPTS["Write an email"],))
+    buttons[3].button("Load coding", use_container_width=True, on_click=set_prompt_text, args=(EXAMPLE_PROMPTS["Build code"],))
+
+
+def build_history(uploaded) -> pd.DataFrame:
+    history = safe_uploaded_history(uploaded)
+    session_rows = st.session_state.get("session_history", [])
+    if session_rows:
+        additions = [{"context": item.get("context", "general"), "user_input": item.get("user_input", "")} for item in session_rows]
+        history = pd.concat([history, pd.DataFrame(additions)], ignore_index=True)
+    return clean_history_df(history)
+
+
+def render_workspace(uploaded) -> None:
+    render_hero()
+    render_quick_actions()
+    st.write("")
+
+    history = build_history(uploaded)
     engine = SuggestionEngine(history)
     ranker = BanditRanker()
 
-    main_col, insight_col = st.columns([2.1, 1])
+    prompt = st.session_state.get("prompt_text", "")
+    analysis = analyze_prompt_quality(
+        prompt,
+        st.session_state.target_audience,
+        st.session_state.response_length,
+        st.session_state.prompt_tone,
+        st.session_state.output_format,
+    )
 
-    with main_col:
-        st.subheader("Write with AI suggestions")
-        contexts = ["email", "search", "note", "report", "general"]
-        default_index = contexts.index(st.session_state.last_context) if st.session_state.last_context in contexts else 0
-        context = st.selectbox("Writing context", contexts, index=default_index)
-        prompt = st.text_area(
-            "Start typing",
-            value=st.session_state.last_prompt,
-            height=170,
-            placeholder="Example: Dear team, thank you for...",
+    left, right = st.columns([2.15, 1], gap="large")
+    with left:
+        with st.container(border=True):
+            header_a, header_b = st.columns([4, 1])
+            header_a.markdown('<div class="section-kicker">✦ Prompt editor</div>', unsafe_allow_html=True)
+            header_b.caption(f"{len(normalize_text(prompt).split()) if normalize_text(prompt) else 0} words")
+            st.text_area(
+                "Prompt editor",
+                key="prompt_text",
+                label_visibility="collapsed",
+                placeholder="What would you like AI to help you with today?",
+                height=190,
+            )
+            st.caption("Examples")
+            example_cols = st.columns(3)
+            for idx, (label, example) in enumerate(EXAMPLE_PROMPTS.items()):
+                example_cols[idx % 3].button(
+                    label,
+                    key=f"example_{idx}",
+                    use_container_width=True,
+                    on_click=set_prompt_text,
+                    args=(example,),
+                )
+
+        with st.container(border=True):
+            st.markdown('<div class="section-kicker">Prompt details</div>', unsafe_allow_html=True)
+            row1 = st.columns(3)
+            row1[0].selectbox("Context", PROMPT_CONTEXTS, key="prompt_context")
+            row1[1].selectbox("Target AI", PROMPT_MODELS, key="target_model")
+            row1[2].selectbox("Response length", PROMPT_LENGTHS, key="response_length")
+            row2 = st.columns(3)
+            row2[0].selectbox("Audience", PROMPT_AUDIENCES, key="target_audience")
+            row2[1].selectbox("Tone", PROMPT_TONES, key="prompt_tone")
+            row2[2].selectbox("Output format", PROMPT_FORMATS, key="output_format")
+            row3 = st.columns([1, 1, 1.3])
+            row3[0].slider("Next-phrase suggestions", 3, 8, key="top_k")
+            row3[1].checkbox("Learn from this session", key="learn_from_session")
+            generate = row3[2].button("Improve and generate suggestions", type="primary", use_container_width=True)
+
+        prompt = st.session_state.get("prompt_text", "")
+        analysis = analyze_prompt_quality(
+            prompt,
+            st.session_state.target_audience,
+            st.session_state.response_length,
+            st.session_state.prompt_tone,
+            st.session_state.output_format,
+        )
+        improved = build_improved_prompt(
+            prompt,
+            st.session_state.prompt_context,
+            st.session_state.target_model,
+            st.session_state.response_length,
+            st.session_state.prompt_tone,
+            st.session_state.target_audience,
+            st.session_state.output_format,
+            st.session_state.applied_guidance,
         )
 
-        controls = st.columns([1, 1, 1])
-        with controls[0]:
-            top_k = st.slider("Number of suggestions", min_value=3, max_value=8, value=5)
-        with controls[1]:
-            add_to_history = st.checkbox("Learn from this session text", value=True)
-        with controls[2]:
-            st.write("")
-            st.write("")
-            generate = st.button("Generate suggestions", type="primary", use_container_width=True)
-
         if generate:
-            st.session_state.last_prompt = prompt
-            st.session_state.last_context = context
-            if add_to_history and prompt.strip():
-                example = {"context": context, "user_input": prompt.strip(), "created_at": current_utc_iso()}
+            if st.session_state.learn_from_session and normalize_text(prompt):
+                example = {
+                    "context": st.session_state.prompt_context.lower(),
+                    "user_input": normalize_text(prompt),
+                    "created_at": current_utc_iso(),
+                }
                 st.session_state.session_history.append(example)
                 history = pd.concat([history, pd.DataFrame([example])], ignore_index=True)
                 engine = SuggestionEngine(history)
-            suggestions = engine.suggestions(prompt, context, top_k=top_k)
+            suggestions = engine.suggestions(prompt, st.session_state.prompt_context.lower(), top_k=st.session_state.top_k)
             st.session_state.last_suggestions = ranker.rank(suggestions)
+            st.session_state.generation_log.insert(
+                0,
+                {
+                    "created_at": current_utc_iso(),
+                    "title": normalize_text(prompt)[:70] or "Untitled prompt",
+                    "context": st.session_state.prompt_context,
+                    "score": analysis["score"],
+                    "prompt": prompt,
+                    "improved": improved,
+                },
+            )
+
+        quality_suggestions = analysis["suggestions"] if normalize_text(prompt) else []
+        if quality_suggestions:
+            st.markdown("### Smart improvements")
+            suggestion_cols = st.columns(2)
+            for idx, (title, detail, fix) in enumerate(quality_suggestions):
+                with suggestion_cols[idx % 2].container(border=True):
+                    st.markdown(f"**{title}**")
+                    st.caption(detail)
+                    c1, c2 = st.columns(2)
+                    if c1.button("Apply", key=f"apply_quality_{idx}", use_container_width=True):
+                        if fix not in st.session_state.applied_guidance:
+                            st.session_state.applied_guidance.append(fix)
+                        st.rerun()
+                    if c2.button("Dismiss", key=f"dismiss_quality_{idx}", use_container_width=True):
+                        st.info("Suggestion dismissed for this view.")
 
         suggestions = st.session_state.get("last_suggestions", [])
         if suggestions:
-            st.markdown("### Suggested continuations")
-            for i, item in enumerate(suggestions, start=1):
+            st.markdown("### Personalized next-phrase suggestions")
+            for idx, item in enumerate(suggestions, start=1):
                 with st.container(border=True):
-                    st.markdown(f"**Suggestion {i}:** {item['text']}")
-                    st.caption(
-                        f"Source: {item['source']} | Why: {item['reason']} | "
-                        f"Current score: {ranker.score(item['source']):.2f}"
-                    )
-                    st.code(item["text"], language="text")
-                    feedback_left, feedback_right = st.columns(2)
-                    with feedback_left:
-                        if st.button(f"Accept suggestion {i}", key=f"accept_{i}", use_container_width=True):
-                            ranker.update(item["source"], accepted=True)
-                            st.success("Feedback saved. This source will rank higher next time.")
-                    with feedback_right:
-                        if st.button(f"Reject suggestion {i}", key=f"reject_{i}", use_container_width=True):
-                            ranker.update(item["source"], accepted=False)
-                            st.info("Feedback saved. This source will rank lower next time.")
-        else:
-            st.info("Type a prompt and click Generate suggestions to see the assistant in action.")
+                    st.markdown(f"**{idx}. {item['text']}**")
+                    st.caption(f"{item['reason']} · feedback score {ranker.score(item['source']):.2f}")
+                    f1, f2, f3 = st.columns([1, 1, 2])
+                    if f1.button("Accept", key=f"accept_{idx}", use_container_width=True):
+                        ranker.update(item["source"], accepted=True)
+                        st.success("Accepted. This source will rank higher.")
+                    if f2.button("Reject", key=f"reject_{idx}", use_container_width=True):
+                        ranker.update(item["source"], accepted=False)
+                        st.info("Rejected. This source will rank lower.")
+                    f3.code(item["text"], language="text")
 
-    with insight_col:
-        st.subheader("Behavior insights")
+        st.markdown("### Before and after")
+        original_col, improved_col = st.columns(2)
+        original_escaped = html.escape(prompt or "Start typing to see your prompt here.")
+        original_col.markdown(f'<div class="section-kicker">Original prompt</div><div class="original-box">{original_escaped}</div>', unsafe_allow_html=True)
+        improved_escaped = html.escape(improved or "Your expert-level rewrite will appear here.")
+        improved_col.markdown(f'<div class="section-kicker">Improved prompt</div><div class="improved-box">{improved_escaped}</div>', unsafe_allow_html=True)
+        action_cols = st.columns([1, 1, 1])
+        action_cols[0].download_button("Export TXT", improved, file_name="improved_prompt.txt", mime="text/plain", disabled=not bool(improved), use_container_width=True)
+        if action_cols[1].button("Save prompt", disabled=not bool(improved), use_container_width=True):
+            st.session_state.saved_prompts.insert(0, {"title": normalize_text(prompt)[:60], "prompt": prompt, "improved": improved, "score": analysis["score"]})
+            st.success("Saved to your prompt library.")
+        if action_cols[2].button("Clear guidance", use_container_width=True):
+            st.session_state.applied_guidance = []
+            st.rerun()
+
+    with right:
+        render_score_card(analysis)
+        st.write("")
         insights = engine.behavior_insights()
-        st.metric("Training examples", insights["num_examples"])
-        st.metric("Average content words", insights["avg_content_words"])
-        st.write("Contexts learned")
-        st.json(insights["contexts"])
-        common_terms = [word for word, _ in insights["common_terms"]]
-        st.write("Common terms")
-        st.write(", ".join(common_terms) if common_terms else "No common terms yet.")
+        with st.container(border=True):
+            st.markdown('<div class="section-kicker">Today\'s activity</div>', unsafe_allow_html=True)
+            m1, m2 = st.columns(2)
+            m1.metric("Prompts improved", len(st.session_state.generation_log))
+            average_score = round(sum(item["score"] for item in st.session_state.generation_log) / len(st.session_state.generation_log)) if st.session_state.generation_log else 0
+            m2.metric("Average score", average_score)
+            m3, m4 = st.columns(2)
+            m3.metric("Training examples", insights["num_examples"])
+            m4.metric("Saved prompts", len(st.session_state.saved_prompts))
+        with st.container(border=True):
+            st.markdown('<div class="section-kicker">Behavior insights</div>', unsafe_allow_html=True)
+            st.write(f"**Average content words:** {insights['avg_content_words']}")
+            st.write("**Common terms**")
+            terms = "".join(f'<span class="chip">{html.escape(str(word))}</span>' for word, _ in insights["common_terms"])
+            st.markdown(terms or '<span class="chip">No terms yet</span>', unsafe_allow_html=True)
+            st.write("**Contexts learned**")
+            st.bar_chart(pd.Series(insights["contexts"], name="Examples"), height=190)
+        with st.container(border=True):
+            st.markdown('<div class="section-kicker">Session profile</div>', unsafe_allow_html=True)
+            profile = {
+                "created_at": current_utc_iso(),
+                "session_history": st.session_state.session_history,
+                "feedback_ranker": st.session_state.get("bandit", {}),
+                "saved_prompts": st.session_state.saved_prompts,
+            }
+            st.download_button("Download profile JSON", json.dumps(profile, indent=2), "genai_prompt_assistant_profile.json", "application/json", use_container_width=True)
 
-        st.divider()
-        st.subheader("Feedback ranker")
-        st.json(st.session_state.get("bandit", {}))
 
-        st.divider()
-        st.subheader("Download session")
-        profile = {
-            "created_at": current_utc_iso(),
-            "session_history": st.session_state.get("session_history", []),
-            "bandit": st.session_state.get("bandit", {}),
-        }
-        st.download_button(
-            "Download profile JSON",
-            data=json.dumps(profile, indent=2),
-            file_name="genai_prompt_assistant_profile.json",
-            mime="application/json",
-            use_container_width=True,
+def render_history_page() -> None:
+    st.markdown('<div class="accent-rule"></div>', unsafe_allow_html=True)
+    st.title("History")
+    st.caption("Every prompt improved during this active session, in one timeline.")
+    query = st.text_input("Search your prompts", placeholder="Search title, context, or prompt text")
+    items = st.session_state.generation_log
+    if query:
+        q = query.lower()
+        items = [item for item in items if q in json.dumps(item).lower()]
+    if not items:
+        st.info("No prompt history yet. Improve a prompt in the Workspace to create an entry.")
+        return
+    for item in items:
+        with st.container(border=True):
+            safe_title = html.escape(str(item["title"]))
+            st.markdown(f'<span class="history-score">{item["score"]}</span><strong>{safe_title}</strong>', unsafe_allow_html=True)
+            st.caption(f'{item["created_at"][:16].replace("T", " ")} UTC · {item["context"]}')
+            with st.expander("Open prompt and improved version"):
+                c1, c2 = st.columns(2)
+                c1.code(item["prompt"], language="text")
+                c2.code(item["improved"], language="text")
+
+
+def render_library_page() -> None:
+    st.markdown('<div class="accent-rule"></div>', unsafe_allow_html=True)
+    st.title("Saved Prompts")
+    st.caption("Start from a proven template, then customize it in the Workspace.")
+    st.markdown("### Template library")
+    cols = st.columns(3)
+    for idx, (category, template) in enumerate(PROMPT_LIBRARY.items()):
+        with cols[idx % 3].container(border=True):
+            st.markdown(f"**{category}**")
+            st.caption(template[:110] + "...")
+            st.button(
+                "Use template",
+                key=f"template_{category}",
+                use_container_width=True,
+                on_click=set_prompt_text,
+                args=(template,),
+            )
+    st.markdown("### Your saved prompts")
+    if not st.session_state.saved_prompts:
+        st.info("No saved prompts yet.")
+    for idx, item in enumerate(st.session_state.saved_prompts):
+        with st.container(border=True):
+            st.markdown(f"**{item['title'] or 'Saved prompt'}**")
+            st.caption(f"Quality score: {item['score']}")
+            st.code(item["improved"], language="text")
+            st.button(
+                "Load in Workspace",
+                key=f"load_saved_{idx}",
+                on_click=set_prompt_text,
+                args=(item["prompt"],),
+            )
+
+
+def render_training_page(uploaded) -> None:
+    st.markdown('<div class="accent-rule"></div>', unsafe_allow_html=True)
+    st.title("Teach GenAI Prompt")
+    st.caption("Upload approved writing examples so suggestions can reflect the user's own style.")
+    history = build_history(uploaded)
+    engine = SuggestionEngine(history)
+    insights = engine.behavior_insights()
+    with st.container(border=True):
+        st.markdown("#### Training data status")
+        if uploaded is None:
+            st.info("Using fictional sample data. Upload a CSV from the sidebar to personalize the model.")
+        else:
+            st.success("Uploaded CSV loaded successfully for this session.")
+        a, b, c = st.columns(3)
+        a.metric("Examples", insights["num_examples"])
+        b.metric("Average content words", insights["avg_content_words"])
+        c.metric("Contexts", len(insights["contexts"]))
+        st.dataframe(history, use_container_width=True, hide_index=True)
+    with st.container(border=True):
+        st.markdown("#### Learned writing signals")
+        terms = "".join(f'<span class="chip">{html.escape(str(word))}</span>' for word, _ in insights["common_terms"])
+        st.markdown(terms, unsafe_allow_html=True)
+        st.bar_chart(pd.Series(insights["contexts"], name="Examples"))
+    with st.expander("Required CSV format"):
+        st.code("context,user_input\nemail,Dear team thank you for the update\nsearch,best beginner Python project ideas", language="csv")
+
+
+def render_settings_page() -> None:
+    st.markdown('<div class="accent-rule"></div>', unsafe_allow_html=True)
+    st.title("Settings")
+    st.caption("Choose the default AI target, writing style, and accessibility preferences.")
+    with st.container(border=True):
+        st.selectbox("Default target AI", PROMPT_MODELS, key="target_model")
+        st.selectbox("Default tone", PROMPT_TONES, key="prompt_tone")
+        st.selectbox("Default audience", PROMPT_AUDIENCES, key="target_audience")
+    with st.container(border=True):
+        st.checkbox("Live prompt analysis", key="live_analysis")
+        st.checkbox("High contrast mode", key="high_contrast")
+        st.checkbox("Learn from session text by default", key="learn_from_session")
+    st.info("Settings are kept in the active browser session for this prototype.")
+
+
+def render_help_page() -> None:
+    st.markdown('<div class="accent-rule"></div>', unsafe_allow_html=True)
+    st.title("Quick start")
+    st.caption("Five short steps to build a clearer, stronger AI prompt.")
+    steps = [
+        ("1", "Choose a task", "Start with a blank canvas, example, or prompt library template."),
+        ("2", "Name the audience", "Select who will read or use the response."),
+        ("3", "Set response rules", "Choose the target AI, tone, length, and output format."),
+        ("4", "Improve the prompt", "Review the quality score and apply smart improvements."),
+        ("5", "Learn from feedback", "Accept or reject next-phrase suggestions to adjust their ranking."),
+    ]
+    for number, title, detail in steps:
+        with st.container(border=True):
+            c1, c2 = st.columns([.4, 8])
+            c1.markdown(f"### {number}")
+            c2.markdown(f"**{title}**")
+            c2.caption(detail)
+    with st.expander("Privacy and prototype limitations"):
+        st.write(
+            "This demonstration runs lightweight local ML inside the Streamlit process and does not call an external AI API. "
+            "It does not provide persistent accounts or a production database. A production browser extension or mobile keyboard "
+            "would require explicit consent, secure storage, data deletion controls, authentication, and security review."
         )
 
-        session_df = pd.DataFrame(st.session_state.get("session_history", []))
-        csv_buffer = StringIO()
-        session_df.to_csv(csv_buffer, index=False)
-        st.download_button(
-            "Download session CSV",
-            data=csv_buffer.getvalue(),
-            file_name="session_user_history.csv",
-            mime="text/csv",
-            use_container_width=True,
-            disabled=session_df.empty,
-        )
 
-    st.divider()
-    with st.expander("Prototype notes and limitations"):
-        st.markdown(
-            "This app is a working web prototype based on the project Colab notebook. "
-            "It demonstrates the product idea with lightweight ML so it can run on Streamlit hosting. "
-            "A production typing assistant, browser extension, or iOS keyboard would require native app development, "
-            "stronger privacy controls, security review, user consent flows, and larger training/evaluation data."
-        )
+def main() -> None:
+    st.set_page_config(page_title=APP_NAME, page_icon="✨", layout="wide", initial_sidebar_state="expanded")
+    extend_session_defaults()
+    inject_lovable_styles()
+    uploaded = render_sidebar()
+    render_topbar()
+
+    page = st.session_state.navigation
+    if page == "Workspace":
+        render_workspace(uploaded)
+    elif page == "History":
+        render_history_page()
+    elif page == "Saved Prompts":
+        render_library_page()
+    elif page == "Training":
+        render_training_page(uploaded)
+    elif page == "Settings":
+        render_settings_page()
+    else:
+        render_help_page()
+
+    st.markdown(
+        f'<div class="footer-note">{APP_NAME} · Author: {AUTHOR_NAME} · Mentor: {MENTOR_NAME}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

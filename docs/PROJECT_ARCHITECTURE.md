@@ -1,36 +1,34 @@
-# Project Architecture
+# Project architecture
 
-```text
-User prompt / uploaded examples
-             |
-             v
-     Text validation and cleaning
-             |
-             +--------------------+
-             |                    |
-             v                    v
-   N-gram continuation      TF-IDF similarity
-             |                    |
-             +---------+----------+
-                       v
-             Context-aware candidates
-                       |
-                       v
-          Accept/reject feedback ranker
-                       |
-                       v
-        Ranked suggestions and insights
-```
+## Presentation layer
 
-## Components
+`app.py` contains a Streamlit-native implementation of the supplied Lovable visual system. The application exposes six views through one Streamlit entry point:
 
-- **Input layer:** writing context, current prompt, optional CSV history.
-- **Preprocessing layer:** whitespace normalization, tokenization, context validation.
-- **Prediction layer:** local n-gram continuation and TF-IDF similarity retrieval.
-- **Fallback layer:** context-specific templates for email, search, notes, reports, and general writing.
-- **Feedback layer:** bandit-style source ranking using accept/reject interactions in the current Streamlit session.
-- **Output layer:** ranked suggestions, behavior insights, downloadable session profile, and downloadable CSV.
+1. Workspace
+2. History
+3. Saved Prompts
+4. Training
+5. Settings
+6. Help
 
-## Scope
+Custom CSS reproduces the navy application shell, gradient hero, rounded cards, prompt-strength score ring, blue/mint accents, and responsive layout.
 
-This is a lightweight educational and portfolio prototype. It does not use an external generative-AI API or persist user content in a database. A production implementation would need authentication, encrypted storage, consent management, retention controls, stronger evaluation, and platform-specific integrations.
+## Prompt intelligence layer
+
+- Prompt-quality analyzer: clarity, specificity, context, constraints, and examples
+- Improved-prompt builder: role, task, audience, tone, length, output format, and model-specific guidance
+- N-gram predictor: learns likely token continuations from approved history
+- TF-IDF personalization: identifies locally similar writing examples
+- Context templates: provide stable fallback continuations
+- Bandit-style feedback ranker: reorders suggestion sources from accept/reject feedback
+
+## Data layer
+
+- `data/sample_user_history.csv`: fictional demo history
+- Uploaded CSV: active-session personalization
+- `st.session_state`: prompt history, saved prompts, feedback, settings, and session examples
+- Downloaded JSON: portable session profile
+
+## Deployment layer
+
+Streamlit Community Cloud launches the root `app.py`. `requirements.txt` contains the only runtime Python dependencies. The React/TanStack source is not required at runtime; selected design files are retained in `ui_reference/`.

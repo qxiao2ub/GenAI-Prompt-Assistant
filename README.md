@@ -1,87 +1,113 @@
-# GenAI Prompt Assistant
+# GenAI Prompt Assistant - Lovable UI + Streamlit Core
+
+A GitHub-ready Streamlit application that combines the functional ML prototype from `GenAI_Prompt_Assistant_Streamlit_GitHub.zip` with the visual system supplied in `lovable-gen-ai-prompt-source.zip`.
 
 **Author:** Yashvi Mehta  
 **Mentor:** Dr. Qingyang Xiao
 
-GenAI Prompt Assistant is a privacy-first Streamlit prototype that learns from approved writing examples and proposes next phrases for emails, notes, reports, general writing, and online-search prompts.
+## What was integrated
 
-The app name, browser-page title, main-page heading, sidebar heading, author, and mentor information have all been updated in this repository.
+The original core repository supplied the working Python models, sample data, Colab notebook, session feedback ranker, and Streamlit deployment structure. The Lovable repository supplied the product design language and page architecture.
 
-## Live app capabilities
+This integrated version ports the Lovable experience into Streamlit-native components:
 
-- Accepts a partial phrase, sentence, paragraph, or search prompt.
-- Supports `email`, `search`, `note`, `report`, and `general` writing contexts.
-- Generates lightweight local next-phrase suggestions.
-- Learns from built-in examples, an uploaded CSV, and optional session text.
-- Uses TF-IDF similarity to retrieve relevant prior writing patterns.
-- Uses an n-gram predictor to estimate likely continuations.
-- Adds context-aware fallback suggestions when training history is limited.
-- Accepts positive or negative feedback and ranks suggestion sources using a bandit-style score.
-- Displays behavior insights such as example counts, context counts, common terms, and average content length.
-- Downloads the session learning profile as JSON and approved session examples as CSV.
-- Requires no API key and calls no external AI service.
+- Navy workspace sidebar and GenAI Prompt brand mark
+- Gradient welcome hero and quick-action cards
+- Prompt editor with example starters
+- Target AI, context, audience, tone, length, and output format controls
+- Live prompt-quality score with clarity, specificity, context, constraints, and example breakdowns
+- Smart prompt-improvement recommendations
+- Personalized next-phrase suggestions from local n-gram and TF-IDF models
+- Accept/reject feedback ranking
+- Before-and-after prompt comparison
+- Prompt history
+- Saved-prompt library and reusable templates
+- Training-data dashboard
+- Settings and quick-start pages
+- Author and mentor credits in the sidebar and footer
 
-## Branding
-
-The Streamlit interface displays:
-
-```text
-GenAI Prompt Assistant
-Author: Yashvi Mehta
-Mentor: Dr. Qingyang Xiao
-```
-
-The author and mentor appear in both places requested:
-
-1. At the top of the left sidebar.
-2. Directly below the app title on the main page.
+The app remains a single Streamlit deployment. It does not require Node.js, npm, React, or a separate front-end hosting service.
 
 ## Repository structure
 
 ```text
-.
-|-- app.py
-|-- requirements.txt
-|-- README.md
-|-- LICENSE
-|-- .gitignore
-|-- .streamlit/
-|   `-- config.toml
-|-- data/
-|   `-- sample_user_history.csv
-|-- notebooks/
-|   `-- GenAI_Prompt_Assistant_Colab.ipynb
-|-- docs/
-|   |-- PROJECT_ARCHITECTURE.md
-|   `-- STREAMLIT_DEPLOYMENT.md
-`-- tests/
-    `-- test_static_checks.py
+GenAI_Prompt_Assistant_Lovable_Integrated/
+├── app.py                         # Streamlit Cloud entry point
+├── requirements.txt              # Python dependencies
+├── README.md                      # This guide
+├── LICENSE
+├── data/
+│   └── sample_user_history.csv
+├── notebooks/
+│   └── GenAI_Prompt_Assistant_Colab.ipynb
+├── assets/
+│   └── favicon.svg
+├── .streamlit/
+│   └── config.toml
+├── docs/
+│   ├── PROJECT_ARCHITECTURE.md
+│   └── STREAMLIT_DEPLOYMENT.md
+├── tests/
+│   └── test_static_checks.py
+└── ui_reference/                 # Selected supplied Lovable design source
+    ├── README.md
+    ├── app-shell.tsx
+    ├── brand-logo.tsx
+    ├── prompt-engine.ts
+    ├── score-ring.tsx
+    ├── styles.css
+    └── workspace-index.tsx
 ```
 
-## Why this version is Streamlit-ready
+## Streamlit Cloud deployment
 
-The entrypoint is the root-level `app.py`. It contains the complete prediction engine and does not import a local `src` package. This prevents the earlier deployment failure:
+### 1. Extract the ZIP
+
+Download and extract the generated repository ZIP. Do not upload only the compressed ZIP as the GitHub repository contents.
+
+### 2. Create a GitHub repository
+
+Create a new empty GitHub repository, for example:
 
 ```text
-ModuleNotFoundError: No module named 'src'
+genai-prompt-assistant
 ```
 
-The sample-data path is resolved relative to `app.py`, instead of depending on the server's current working directory:
+Upload all extracted files and folders so that `app.py` and `requirements.txt` are visible at the repository root.
 
-```python
-BASE_DIR = Path(__file__).resolve().parent
-DATA_PATH = BASE_DIR / "data" / "sample_user_history.csv"
+### 3. Confirm the root layout
+
+The GitHub repository root must look like:
+
+```text
+app.py
+requirements.txt
+README.md
+data/
+.streamlit/
 ```
 
-## Quick local test
+Do not place all files inside an additional nested directory.
 
-Python 3.11 or newer is recommended.
+### 4. Deploy on Streamlit Community Cloud
+
+Create a new Streamlit app and select:
+
+```text
+Repository: your-account/genai-prompt-assistant
+Branch: main
+Main file path: app.py
+```
+
+No API secrets are required for this local-ML prototype.
+
+## Run locally
 
 ### Windows PowerShell
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 streamlit run app.py
@@ -97,167 +123,134 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open the local address displayed by Streamlit, usually `http://localhost:8501`.
+Open the local URL displayed by Streamlit, normally `http://localhost:8501`.
 
-## Upload to GitHub
+## CSV personalization format
 
-1. Download and extract the ZIP file.
-2. Create a new GitHub repository, such as `genai-prompt-assistant`.
-3. Upload the **extracted contents** of the project folder.
-4. Confirm that these files are at the repository root:
-
-```text
-app.py
-requirements.txt
-README.md
-```
-
-5. Commit the files to the `main` branch.
-
-Do not upload only the ZIP file. GitHub must contain the extracted files and folders so Streamlit can access them.
-
-## Deploy to Streamlit Community Cloud
-
-Use these values when creating the Streamlit app:
-
-```text
-Branch: main
-Main file path: app.py
-```
-
-No secrets or API keys are required.
-
-A more detailed procedure is available in [`docs/STREAMLIT_DEPLOYMENT.md`](docs/STREAMLIT_DEPLOYMENT.md).
-
-## CSV history format
-
-The app works without an upload by using fictional sample data. A custom CSV must contain the following required column:
-
-```text
-user_input
-```
-
-It may also contain this optional column:
-
-```text
-context
-```
-
-Suggested context values are:
-
-```text
-email
-search
-note
-report
-general
-```
-
-Example:
+The sidebar accepts a CSV with one required column and one optional column:
 
 ```csv
 context,user_input
-email,"Dear team, thank you for the update. I will review the document and respond by Friday."
-search,"beginner guide to deploying a Streamlit app from GitHub"
-note,"The user should control which examples the assistant learns from."
+email,"Dear team, thank you for the update."
+search,"best beginner Python project ideas"
+report,"The project includes preprocessing, prediction, feedback, and a user interface."
 ```
+
+Required:
+
+- `user_input`
+
+Optional:
+
+- `context`
+
+When `context` is missing, the app assigns `general`.
 
 ## Model pipeline
 
-### 1. Text preprocessing
+### N-gram continuation model
 
-The app normalizes spacing, tokenizes the writing examples, removes common stop words for similarity analysis, and validates the CSV schema.
+The app learns common token transitions from approved writing samples and proposes likely next phrases.
 
-### 2. N-gram next-phrase prediction
+### Local TF-IDF personalization
 
-The local n-gram model learns which token commonly follows the preceding tokens in the approved writing history. It uses shorter-context backoff and unigram frequencies when an exact sequence is unavailable.
+The current prompt is compared with prior samples. A related excerpt can be used as a personalized continuation.
 
-### 3. TF-IDF personalization
+### Context templates
 
-A small TF-IDF implementation converts prior writing examples and the current prompt into weighted term vectors. Cosine similarity identifies the closest prior example, from which the app derives a possible continuation.
+Email, search, note, report, and general templates provide reliable fallback suggestions.
 
-### 4. Context-aware fallback generation
+### Prompt-quality analyzer
 
-When local history is sparse, the app adds templates appropriate for email, search, notes, reports, or general writing.
+A lightweight heuristic layer scores:
 
-### 5. Feedback-based ranking
+- Clarity
+- Specificity
+- Context
+- Constraints
+- Examples
 
-Accept and reject buttons update a simple bandit-style score for each suggestion source. Sources with stronger positive session feedback are ranked higher on later generations.
+It then proposes practical fixes that can be applied to the improved prompt.
 
-## Privacy and responsible use
+### Feedback ranker
 
-This prototype:
+Accept/reject actions update a small bandit-style score in Streamlit session state. Sources that receive positive feedback rank higher later in the session.
 
-- Does not call an external AI API.
-- Does not require an API key.
-- Does not use a persistent database.
-- Keeps feedback and newly learned text in the active Streamlit session unless the user downloads it.
-- Uses fictional sample content.
+## Privacy behavior
 
-Before converting this into a production keyboard, browser extension, email assistant, or mobile app, add explicit consent, secure authentication, encrypted storage, configurable retention, data deletion, abuse prevention, and independent privacy/security review.
+- No external AI API is called.
+- No API key is required.
+- Uploaded CSV data is used only within the active Streamlit process/session.
+- Session history is not written to a production database.
+- Users can download their profile data as JSON.
 
-## Limitations
+For production use, add authentication, encrypted persistent storage, consent flows, deletion controls, moderation, audit logs, and a formal security/privacy review.
 
-- The local model is an educational prototype, not a large language model.
-- N-gram predictions can repeat frequent tokens and are limited by the available writing history.
-- TF-IDF measures lexical similarity rather than deep semantic meaning.
-- Feedback is session-based and is not retained after the Streamlit session ends.
-- The app does not integrate directly with email clients, browsers, or mobile keyboards.
+## Important implementation note
+
+The Lovable source is a React/TanStack project. Streamlit Community Cloud launches Python entry points, not a separate Vite front end. Therefore, this repository uses a Streamlit-native port of the Lovable design rather than attempting to run both servers. The selected original design files remain in `ui_reference/` for provenance and future front-end work.
+
+## Testing
+
+Run the static deployment tests with:
+
+```bash
+python -m pytest -q
+```
+
+A direct syntax check is also available:
+
+```bash
+python -m py_compile app.py
+```
 
 ## Troubleshooting
 
 ### `ModuleNotFoundError: No module named 'src'`
 
-This repository does not use `src` imports. Seeing this error means Streamlit is deploying an older commit or the wrong entrypoint. Confirm that the selected main file is the new root-level `app.py`, then reboot or redeploy.
+This integrated `app.py` is self-contained and does not import a local Python `src` package. Confirm that Streamlit is deploying the new repository and that the main file path is exactly `app.py`.
 
-### App still shows the old Yashvi title
+### The old interface still appears
 
-Confirm that GitHub's current `app.py` contains:
+In Streamlit Community Cloud, open **Manage app**, reboot the app, and confirm the latest GitHub commit is deployed.
 
-```python
-APP_NAME = "GenAI Prompt Assistant"
-```
+### Sample data cannot be found
 
-Then reboot the Streamlit app or clear its cache.
-
-### Sample CSV cannot be found
-
-Keep this file in the repository:
+Keep this path unchanged in the repository:
 
 ```text
 data/sample_user_history.csv
 ```
 
-The app also has built-in fallback examples, so it remains usable if the demo CSV is unavailable.
+The app resolves it relative to `app.py`, so it does not depend on the server working directory.
 
 ### Uploaded CSV is rejected
 
-Check that the file has a column named exactly `user_input`. The optional context column must be named exactly `context`.
-
-## Colab notebook
-
-The repository includes an updated copy of the original notebook:
+Confirm that the header includes exactly:
 
 ```text
-notebooks/GenAI_Prompt_Assistant_Colab.ipynb
+user_input
 ```
 
-It is included for portfolio documentation, experimentation, and Google Colab use. Streamlit deploys only the root `app.py`.
+The optional header is:
 
-## Portfolio value
+```text
+context
+```
 
-This repository demonstrates:
+## Portfolio use
 
-- Product and user-experience design
-- Text preprocessing
-- Lightweight machine learning
-- Personalized information retrieval
-- Online feedback ranking
-- Streamlit development
-- GitHub repository organization
-- Deployment documentation
-- Privacy-aware prototyping
+This project demonstrates:
+
+- Python application engineering
+- Streamlit product development
+- Local NLP and recommendation logic
+- Prompt-quality analysis
+- Feedback-driven ranking
+- Responsive UI translation from a React design system
+- GitHub packaging and cloud deployment
+- Privacy-first prototype planning
 
 ## License
 
-Released under the MIT License for educational and portfolio use. See [`LICENSE`](LICENSE).
+See `LICENSE`.
